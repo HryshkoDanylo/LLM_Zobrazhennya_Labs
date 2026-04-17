@@ -1,0 +1,106 @@
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+
+MODEL_FILE = 'mnist_model.keras'
+
+# давнлоад + нормалізація картинки
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+if os.path.exists(MODEL_FILE):
+    model = tf.keras.models.load_model(MODEL_FILE)
+else:
+    print("Збережної моделі не існує")
+    model = models.Sequential([
+        layers.Flatten(input_shape=(28, 28)),
+        layers.Dense(128, activation='relu'),
+        layers.Dense(10, activation='softmax')
+    ])
+
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy']) # цифри, варіанти
+    model.fit(x_train, y_train, epochs=3, validation_split=0.18)
+
+    model.save(MODEL_FILE)
+    print(f"\nМодель успішно збережено у файл {MODEL_FILE}!")
+
+# Точність
+test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
+print(f'Точність на тестових даних MNIST: {test_acc * 100:.2f}%\n')
+
+
+
+predictions_mnist = model.predict(x_test)
+plt.figure(figsize=(15, 10))
+plt.suptitle("Тестування на 10 випадкових цифрах з датасету MNIST", fontsize=16)
+
+random_indices = np.random.choice(len(x_test), 10, replace=False)
+
+for i, idx in enumerate(random_indices):
+    plt.subplot(2, 5, i + 1)
+    img_probs = predictions_mnist[idx]
+
+    # Топ 3 по софтмаксу, можна було би і прибрати насправді
+    top_10_indices = np.argsort(img_probs)[::-1]
+    top_10_probs = img_probs[top_10_indices] * 100
+
+    title_text = f"Справжня: {y_test[idx]}\n" + "-"*15 + "\n"
+    for j in range(10):
+        title_text += f"{j+1}. Цифра {top_10_indices[j]} ({top_10_probs[j]:.5f}%)\n"
+
+    title_color = 'green' if top_10_indices[0] == y_test[idx] else 'red'
+
+    # cmap binery інвертує кольори!!
+    plt.imshow(x_test[idx], cmap='binary')
+    plt.title(title_text, color=title_color, fontsize=10, loc='left')
+    plt.axis('off')
+
+plt.tight_layout()
+
+
+# тестування вручну намальованих картинок
+folder_path = r"D:\MNIST Handwriten"
+my_files = ["eight.png", "six.png", "Bsix.png", "three.png", "two.png", "seven.png", "Bseven.png"]
+
+plt.figure(figsize=(15, 5))
+plt.suptitle("Тестування на власних малюнках", fontsize=16)
+
+for i, file_name in enumerate(my_files):
+    file_path = os.path.join(folder_path, file_name)
+
+    try:
+        # перепаковую
+        img = Image.open(file_path).convert('L')
+        img = img.resize((28, 28))
+        img_array = np.array(img)
+
+        # ІНВЕРСІЯ щоб кольори збігалися з сирими даними MNIST
+        img_array = 255 - img_array
+        img_array_norm = img_array / 255.0
+
+        img_ready = np.expand_dims(img_array_norm, axis=0)
+        prediction = model.predict(img_ready, verbose=0)
+        img_probs = prediction[0]
+        top_2_indices = np.argsort(img_probs)[-2:][::-1]
+        top_2_probs = img_probs[top_2_indices] * 100
+
+        plt.subplot(1, len(my_files), i + 1)
+        plt.imshow(img_array_norm, cmap='binary')
+
+        title_text = f"Файл: {file_name}\n" + "-"*15 + "\n"
+        for j in range(2):
+            title_text += f"{j+1}. Цифра {top_2_indices[j]} ({top_2_probs[j]:.5f}%)\n"
+
+        plt.title(title_text, color='blue', fontsize=10, loc='left')
+        plt.axis('off')
+
+    except FileNotFoundError:
+        print(f"Помилка: Не можу знайти файл {file_name} у папці {folder_path}")
+
+plt.tight_layout()
+plt.show()
