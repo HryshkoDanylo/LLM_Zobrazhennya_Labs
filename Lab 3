@@ -1,0 +1,47 @@
+import cv2
+import glob
+import sys
+
+image_files = sorted(glob.glob('img*.jpg'))
+images = [cv2.imread(f) for f in image_files if cv2.imread(f) is not None]
+
+if len(images) < 2:
+    print("Помилка: Не знайдено достатньо зображень")
+    sys.exit()
+
+print(f"Кількість зображень для обробки: {len(images)}")
+
+stitcher = cv2.Stitcher_create(cv2.Stitcher_PANORAMA)
+status, stitched_image = stitcher.stitch(images)
+
+if status == cv2.Stitcher_OK:
+    # Обрізка та підготовка маски
+    gray = cv2.cvtColor(stitched_image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        c = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(c)
+        cropped_img = stitched_image[y:y+h, x:x+w]
+        cropped_thresh = thresh[y:y+h, x:x+w]
+    else:
+        cropped_img = stitched_image
+        cropped_thresh = thresh
+
+    inpaint_mask = cv2.bitwise_not(cropped_thresh)
+    final_image = cv2.inpaint(cropped_img, inpaint_mask, 3, cv2.INPAINT_TELEA)
+
+    output_filename = 'p2_MF.jpg'
+    cv2.imwrite(output_filename, final_image)
+    print(f"Готово. Файл збережено: {output_filename}")
+
+    h, w = final_image.shape[:2]
+    if h > 800: final_image = cv2.resize(final_image, (int(w * (800 / h)), 800))
+    elif w > 1400: final_image = cv2.resize(final_image, (1400, int(h * (1400 / w))))
+
+    cv2.imshow("Result", final_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+else:
+    print(f"Помилка зшивання. Код: {status}")
